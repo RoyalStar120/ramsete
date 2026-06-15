@@ -49,7 +49,7 @@ public:
             double k = result[i].curvature;
             double omega=v*k;
             result[i].vLeft * v-omega*trackWidth/2.0;
-            result[i].vRight* v-omega*trackWidth/2.0;
+            result[i].vRight* v+omega*trackWidth/2.0;
         }
         return result;
     }

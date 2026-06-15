@@ -92,8 +92,8 @@ private:
 
     double yDoublePrime(double u) const {
         double s = tangentScale();
-        double t0 = cos(toRadians(start.heading))*s;
-        double t1 = cos(toRadians(end.heading))*s;
+        double t0 = sin(toRadians(start.heading))*s;
+        double t1 = sin(toRadians(end.heading))*s;
         return (12*u - 6)*start.y
         +(6*u - 4)*t0
         +(-12*u + 6)*end.y
@@ -102,7 +102,7 @@ private:
 
     double curvature(double xd, double yd, double xdd, double ydd) const {
         double denom = pow(xd*xd + yd*yd, 1.5);
-        if (fabs(denom < 1e-9)) {
+        if (fabs(denom) < 1e-9) {
             return 0.0;
         }
         return (xd*ydd - yd*xdd)/ denom;
