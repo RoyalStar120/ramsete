@@ -1,5 +1,6 @@
 #include "main.h"
-#include "lemlib/api.hpp"
+#include "lemlib/api.hpp" // IWYU pragma: keep
+#include "pros/misc.h"
 #include "primitives.hpp"
 #include "splinepath.hpp"
 #include "trajectory.hpp"
@@ -11,18 +12,20 @@ const double MAX_ACCEL   = 0;
 const double MU          = 0.5;
 const double B           = 2.0; 
 const double ZETA        = 0.7;
-
 // controller
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
 // motor groups
-pros::MotorGroup leftMotors({-5, 4, -3},
+pros::MotorGroup leftMotors({-8, 7, -9},
                             pros::MotorGearset::blue); // left motor group - ports 3 (reversed), 4, 5 (reversed)
-pros::MotorGroup rightMotors({6, -9, 7}, pros::MotorGearset::blue); // right motor group - ports 6, 7, 9 (reversed)
+pros::MotorGroup rightMotors({2, -4, 3}, pros::MotorGearset::blue); // right motor group - ports 6, 7, 9 (reversed)
 
 // Inertial Sensor on port 10
 pros::Imu imu(10);
-
+pros::adi::Pneumatics clawrotate('C', true);
+pros::adi::Pneumatics clawopen('D', true);
+pros::MotorGroup intake({1, 2}, pros::MotorGearset::blue);
+pros::Motor lift(20);
 // tracking wheels
 // horizontal tracking wheel encoder. Rotation sensor, port 20, not reversed
 pros::Rotation horizontalEnc(20);
@@ -37,7 +40,7 @@ lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_275, -2.5);
 lemlib::Drivetrain drivetrain(&leftMotors, // left motor group
                               &rightMotors, // right motor group
                               10, // 10 inch track width
-                              lemlib::Omniwheel::NEW_4, // using new 4" omnis
+                              lemlib::Omniwheel::NEW_325, // using new 4" omnis
                               360, // drivetrain rpm is 360
                               2 // horizontal drift is 2. If we had traction wheels, it would have been 8
 );
@@ -164,6 +167,8 @@ void autonomous() {
 void opcontrol() {
     // controller
     // loop to continuously update motors
+	bool intakeToggle = false;
+
     while (true) {
         // get joystick positions
         int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
@@ -172,5 +177,34 @@ void opcontrol() {
         chassis.arcade(leftY, rightX);
         // delay to save resources
         pros::delay(10);
-    }
-}
+
+		if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)) {
+			intakeToggle = !intakeToggle;
+		}
+
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
+			intake.move(127);
+		} else if (intakeToggle) {
+			intake.move(-127);
+		}
+		else {
+			intake.move(0);
+		}
+
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
+			lift.move(-127);
+		} 
+		else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1)) {
+			lift.move(127);
+		} else {
+			lift.move(0);
+		}
+
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_X)) {
+			clawopen.toggle();
+		}
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_UP)) {
+			clawrotate.toggle();
+		}
+	}
+}		
