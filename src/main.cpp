@@ -24,7 +24,7 @@ pros::MotorGroup rightMotors({2, -4, 3}, pros::MotorGearset::blue); // right mot
 pros::Imu imu(10);
 pros::adi::Pneumatics clawrotate('C', true);
 pros::adi::Pneumatics clawopen('D', true);
-pros::MotorGroup intake({1, 2}, pros::MotorGearset::blue);
+pros::MotorGroup intake({1, 10}, pros::MotorGearset::blue);
 pros::Motor lift(20);
 // tracking wheels
 // horizontal tracking wheel encoder. Rotation sensor, port 20, not reversed
