@@ -13,7 +13,7 @@ public:
     std::vector<SplinePoint> sample(int samples) const {
         std::vector<SplinePoint> points;
         for (int i=0; i<samples; i++) {
-            double u = (double)i / samples;
+            double u = (double)i / (samples-1);
             double px = x(u);
             double py = y(u);
             double xd = xPrime(u);
