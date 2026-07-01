@@ -6,7 +6,7 @@
 #include "trajectory.hpp"
 #include "ramsete.hpp"
 
-const double TRACK_WIDTH = 10;
+const double TRACK_WIDTH = 11;
 const double MAX_VEL     = 0;
 const double MAX_ACCEL   = 0;  
 const double MU          = 0.5;
@@ -39,7 +39,7 @@ lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_275, -2.5);
 // drivetrain settings
 lemlib::Drivetrain drivetrain(&leftMotors, // left motor group
                               &rightMotors, // right motor group
-                              10, // 10 inch track width
+                              11, // 10 inch track width
                               lemlib::Omniwheel::NEW_325, // using new 4" omnis
                               360, // drivetrain rpm is 360
                               2 // horizontal drift is 2. If we had traction wheels, it would have been 8
