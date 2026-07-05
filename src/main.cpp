@@ -5,6 +5,7 @@
 #include "splinepath.hpp"
 #include "trajectory.hpp"
 #include "ramsete.hpp"
+#include "dsr.hpp"
 
 const double TRACK_WIDTH = 11;
 const double MAX_VEL     = 0;
