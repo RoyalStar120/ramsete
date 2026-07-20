@@ -10,10 +10,12 @@
 
 const double TRACK_WIDTH = 10.75;
 const double MAX_VEL     = 59;
-const double MAX_ACCEL   = 80;  
+const double MAX_ACCEL   = 60;  
 const double MU          = 0.5;
-const double B           = 1.7; //2.0
-const double ZETA        = 0.9; //0.7
+const double B           = 1.7; 
+const double ZETA        = 0.9;
+
+
 
 
 
@@ -24,6 +26,9 @@ pros::Controller controller(pros::E_CONTROLLER_MASTER);
 pros::MotorGroup leftMotors({-4, -5, 6},
                             pros::MotorGearset::blue); // left motor group - ports 3 (reversed), 4, 5 (reversed)
 pros::MotorGroup rightMotors({1, 2, -3}, pros::MotorGearset::blue); // right motor group - ports 6, 7, 9 (reversed)
+
+
+
 
 // Inertial Sensor on port 10
 pros::Imu imu(17);
@@ -119,13 +124,14 @@ void followPath(std::vector<WayPoint> waypoints) {
  * to keep execution time for this mode under a few seconds.
  */
 double startpos;
-
+double clawstart;
 void initialize() {
     pros::lcd::initialize(); // initialize brain screen
     chassis.calibrate(); // calibrate sensors
     startpos = liftrot.get_position(); //centidegrees
     lift.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
     clawrotator.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+    clawstart = clawrot.get_position();
     // the default rate is 50. however, if you need to change the rate, you
     // can do the following.
     // lemlib::bufferedStdout().setRate(...);
@@ -142,6 +148,7 @@ void initialize() {
             pros::lcd::print(1, "Y: %f", chassis.getPose().y); // y
             pros::lcd::print(2, "Theta: %f", chassis.getPose().theta); // heading
             pros::lcd::print(3, "liftrot: %f", liftrot.get_position());
+            pros::lcd::print(4, "clawrot: %f", clawrot.get_position());
             // log position telemetry
             lemlib::telemetrySink()->info("Chassis pose: {}", chassis.getPose());
             // delay to save resources
@@ -185,6 +192,7 @@ void autonomous() {
 
 
 bool movingarm = false;
+bool movingclaw = false;
 // double targetpos = 14355;
 // const double max = 36000;
 // const double min = 14355;
@@ -192,18 +200,23 @@ const double increment = 3000; //centidegfrees
 const double maxincrements = 5; // CHANGE THIS SHIT
 double targetpos;
 double currentpos;
-lemlib::PID liftPID(0.1, 0, 0, 3000, true);
+double clawcurrent;
+double clawtarget;
+lemlib::PID liftPID(0.1, 0, 0.01, 3000, true);
+lemlib::PID clawPID(0.02, 0, 0.06, 3000, true);
 void opcontrol() {
     // controller
     // loop to continuously update motors
 	bool intakeToggle = false;
     currentpos = startpos;
     targetpos = startpos;
+    clawcurrent = clawstart;
+    clawtarget = clawstart;
     const double maxpos = startpos + maxincrements * increment;
 
     while (true) {
         currentpos = liftrot.get_position(); //centidegrees
-
+        clawcurrent = clawrot.get_position();
         // get joystick positions
         int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
         int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
@@ -214,25 +227,35 @@ void opcontrol() {
         //rot sensor used to create macros
 
         ///ALL MACROS ARE HERE (DR4B)
-        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_RIGHT) && targetpos > startpos) {
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R2) && targetpos > startpos) {
             targetpos -= increment;
             // if (targetpos > max) targetpos = max;
             movingarm = true;
         }
-        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_Y) && targetpos < maxpos ) {
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1) && targetpos < maxpos) {
             targetpos += increment;
             movingarm = true;
+            if (clawtarget < (clawstart + 100)) { //17946
+                clawtarget = clawstart + 100;
+                movingclaw = true;
+            }
         }
         if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_DOWN)) {
             targetpos = startpos;
             movingarm = true;
+            clawtarget = clawstart;
+            movingclaw = true;
         }
-        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_A)) {
+        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_A) && clawtarget > (clawstart + 6546)) {
+            if (clawtarget > (clawstart + 33000)) {
+                clawtarget = clawstart + 33000;
+                movingclaw = true;
+            }
             claw.move(127);
         } else {
             claw.move(-127);
         }
-
+/*
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_LEFT)) {
             clawrotator.move(127);
         } else if(controller.get_digital(pros::E_CONTROLLER_DIGITAL_B)) {
@@ -240,7 +263,21 @@ void opcontrol() {
         } else {
             clawrotator.move(0);
         }
-        //lift pid
+*/
+        if (movingclaw) {
+            double error = clawtarget - clawcurrent;
+            double output = clawPID.update(error);
+
+            if (output > 127) output = 127;
+            if (output < -127) output = -127;
+            clawrotator.move(output);
+            if (std::fabs(error) < 50) {
+                clawrotator.brake();
+                movingclaw = false;
+                clawPID.reset();
+            }
+        }
+      //lift pid
         if (movingarm) {
             double error = targetpos - currentpos;
             double output = liftPID.update(error);
