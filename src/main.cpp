@@ -1,5 +1,6 @@
 #include "main.h"
 #include "lemlib/api.hpp" // IWYU pragma: keep
+#include "lemlib/chassis/trackingWheel.hpp"
 #include "pros/misc.h"
 #include "primitives.hpp"
 #include "splinepath.hpp"
@@ -7,61 +8,68 @@
 #include "ramsete.hpp"
 #include "dsr.hpp"
 
-const double TRACK_WIDTH = 11;
-const double MAX_VEL     = 0;
-const double MAX_ACCEL   = 0;  
+const double TRACK_WIDTH = 10.75;
+const double MAX_VEL     = 59;
+const double MAX_ACCEL   = 80;  
 const double MU          = 0.5;
-const double B           = 2.0; 
-const double ZETA        = 0.7;
+const double B           = 1.7; //2.0
+const double ZETA        = 0.9; //0.7
+
+
+
 // controller
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
 // motor groups
-pros::MotorGroup leftMotors({-8, 7, -9},
+pros::MotorGroup leftMotors({-4, -5, 6},
                             pros::MotorGearset::blue); // left motor group - ports 3 (reversed), 4, 5 (reversed)
-pros::MotorGroup rightMotors({2, -4, 3}, pros::MotorGearset::blue); // right motor group - ports 6, 7, 9 (reversed)
+pros::MotorGroup rightMotors({1, 2, -3}, pros::MotorGearset::blue); // right motor group - ports 6, 7, 9 (reversed)
 
 // Inertial Sensor on port 10
-pros::Imu imu(10);
+pros::Imu imu(17);
 pros::adi::Pneumatics clawrotate('C', true);
 pros::adi::Pneumatics clawopen('D', true);
-pros::MotorGroup intake({1, 10}, pros::MotorGearset::blue);
-pros::Motor lift(20);
+
+pros::Motor lift(15);
+pros::Motor intake(-20);
+pros::Rotation liftrot(-12);
+pros::Motor claw(13);
+pros::Motor clawrotator(14);
+pros::Rotation clawrot(16);
 // tracking wheels
 // horizontal tracking wheel encoder. Rotation sensor, port 20, not reversed
-pros::Rotation horizontalEnc(20);
 // vertical tracking wheel encoder. Rotation sensor, port 11, reversed
-pros::Rotation verticalEnc(-11);
+pros::Rotation verticalEnc(7);
 // horizontal tracking wheel. 2.75" diameter, 5.75" offset, back of the robot (negative)
-lemlib::TrackingWheel horizontal(&horizontalEnc, lemlib::Omniwheel::NEW_275, -5.75);
+//lemlib::TrackingWheel horizontal(&horizontalEnc, lemlib::Omniwheel::NEW_275, -5.75);
 // vertical tracking wheel. 2.75" diameter, 2.5" offset, left of the robot (negative)
 lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_275, -2.5);
 
 // drivetrain settings
 lemlib::Drivetrain drivetrain(&leftMotors, // left motor group
                               &rightMotors, // right motor group
-                              11, // 10 inch track width
+                              10.75, // 10 inch track width
                               lemlib::Omniwheel::NEW_325, // using new 4" omnis
                               360, // drivetrain rpm is 360
                               2 // horizontal drift is 2. If we had traction wheels, it would have been 8
 );
 
 // lateral motion controller
-lemlib::ControllerSettings linearController(10, // proportional gain (kP)
+lemlib::ControllerSettings linearController(6, // proportional gain (kP)
                                             0, // integral gain (kI)
-                                            3, // derivative gain (kD)
+                                            28, // derivative gain (kD)
                                             3, // anti windup
                                             1, // small error range, in inches
                                             100, // small error range timeout, in milliseconds
                                             3, // large error range, in inches
                                             500, // large error range timeout, in milliseconds
-                                            20 // maximum acceleration (slew)
+                                            0 // maximum acceleration (slew)
 );
 
 // angular motion controller
-lemlib::ControllerSettings angularController(2, // proportional gain (kP)
+lemlib::ControllerSettings angularController(4, // proportional gain (kP)
                                              0, // integral gain (kI)
-                                             10, // derivative gain (kD)
+                                             30, // derivative gain (kD)
                                              3, // anti windup
                                              1, // small error range, in degrees
                                              100, // small error range timeout, in milliseconds
@@ -73,7 +81,7 @@ lemlib::ControllerSettings angularController(2, // proportional gain (kP)
 // sensors for odometry
 lemlib::OdomSensors sensors(&vertical, // vertical tracking wheel
                             nullptr, // vertical tracking wheel 2, set to nullptr as we don't have a second one
-                            &horizontal, // horizontal tracking wheel
+                            nullptr, // horizontal tracking wheel
                             nullptr, // horizontal tracking wheel 2, set to nullptr as we don't have a second one
                             &imu // inertial sensor
 );
@@ -102,16 +110,22 @@ void followPath(std::vector<WayPoint> waypoints) {
 	auto trajectoryPoints=trajectory.generate(splinePoints);
 	ramsete.follow(trajectoryPoints, chassis);
 }
+
+
 /**
  * Runs initialization code. This occurs as soon as the program is started.
  *
  * All other competition modes are blocked by initialize; it is recommended
  * to keep execution time for this mode under a few seconds.
  */
+double startpos;
+
 void initialize() {
     pros::lcd::initialize(); // initialize brain screen
     chassis.calibrate(); // calibrate sensors
-
+    startpos = liftrot.get_position(); //centidegrees
+    lift.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+    clawrotator.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
     // the default rate is 50. however, if you need to change the rate, you
     // can do the following.
     // lemlib::bufferedStdout().setRate(...);
@@ -127,6 +141,7 @@ void initialize() {
             pros::lcd::print(0, "X: %f", chassis.getPose().x); // x
             pros::lcd::print(1, "Y: %f", chassis.getPose().y); // y
             pros::lcd::print(2, "Theta: %f", chassis.getPose().theta); // heading
+            pros::lcd::print(3, "liftrot: %f", liftrot.get_position());
             // log position telemetry
             lemlib::telemetrySink()->info("Chassis pose: {}", chassis.getPose());
             // delay to save resources
@@ -154,30 +169,91 @@ ASSET(example_txt); // '.' replaced with "_" to make c++ happy
  *
  * This is an example autonomous routine which demonstrates a lot of the features LemLib has to offer
  */
+std::vector<WayPoint> myPath = {
+    {0,  0,  90},   // start facing up
+    {24, 24, 45},   // middle point, angled diagonal
+    {48, 0,  0}     // end facing right
+};
+
+
+
 void autonomous() {
-    followPath({
-		{0,0,90},
-		{12, 24, 45},
-		{36,36,0}
-	});
+    chassis.setPose(0, 0, 0);
+    followPath(myPath);
 }
 
-/**
- * Runs in driver control
- */
+
+
+bool movingarm = false;
+// double targetpos = 14355;
+// const double max = 36000;
+// const double min = 14355;
+const double increment = 3000; //centidegfrees
+const double maxincrements = 5; // CHANGE THIS SHIT
+double targetpos;
+double currentpos;
+lemlib::PID liftPID(0.1, 0, 0, 3000, true);
 void opcontrol() {
     // controller
     // loop to continuously update motors
 	bool intakeToggle = false;
+    currentpos = startpos;
+    targetpos = startpos;
+    const double maxpos = startpos + maxincrements * increment;
 
     while (true) {
+        currentpos = liftrot.get_position(); //centidegrees
+
         // get joystick positions
         int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
         int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
         // move the chassis with curvature drive
         chassis.arcade(leftY, rightX);
         // delay to save resources
-        pros::delay(10);
+
+        //rot sensor used to create macros
+
+        ///ALL MACROS ARE HERE (DR4B)
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_RIGHT) && targetpos > startpos) {
+            targetpos -= increment;
+            // if (targetpos > max) targetpos = max;
+            movingarm = true;
+        }
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_Y) && targetpos < maxpos ) {
+            targetpos += increment;
+            movingarm = true;
+        }
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_DOWN)) {
+            targetpos = startpos;
+            movingarm = true;
+        }
+        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_A)) {
+            claw.move(127);
+        } else {
+            claw.move(-127);
+        }
+
+        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_LEFT)) {
+            clawrotator.move(127);
+        } else if(controller.get_digital(pros::E_CONTROLLER_DIGITAL_B)) {
+            clawrotator.move(-127);
+        } else {
+            clawrotator.move(0);
+        }
+        //lift pid
+        if (movingarm) {
+            double error = targetpos - currentpos;
+            double output = liftPID.update(error);
+
+            if (output > 127) output = 127;
+            if (output < -127) output = -127; 
+            lift.move(output);
+            if (std::fabs(error) < 50) {
+                lift.brake();
+                movingarm = false;
+                liftPID.reset();
+            }
+        }
 
 		if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)) {
 			intakeToggle = !intakeToggle;
@@ -191,21 +267,23 @@ void opcontrol() {
 		else {
 			intake.move(0);
 		}
+        
+		// if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
+		// 	lift.move(-127);
+        //     		} 
+		// else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1)) {
+		// 	lift.move(127);
+        //     		} else {
+		// 	lift.move(0);
+		// }
 
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
-			lift.move(-127);
-		} 
-		else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1)) {
-			lift.move(127);
-		} else {
-			lift.move(0);
-		}
-
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_X)) {
+		if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_X)) {
 			clawopen.toggle();
 		}
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_UP)) {
+		if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_UP)) {
 			clawrotate.toggle();
 		}
-	}
+        pros::delay(10);
+        }
+
 }		
