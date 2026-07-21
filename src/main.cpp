@@ -13,8 +13,9 @@ const double TRACK_WIDTH = 10.75;
 const double MAX_VEL     = 59;
 const double MAX_ACCEL   = 60;
 const double MU          = 0.5;
-const double B           = 1.7;
-const double ZETA        = 0.9;
+const double B           = 2.0;
+const double ZETA        = 0.7;
+
 
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
@@ -34,7 +35,7 @@ pros::Rotation clawrot(-16);
 
 // odometry
 pros::Rotation verticalEnc(7);
-lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_275, -2.5);
+lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_2, -0.875);
 
 // drivetrain
 lemlib::Drivetrain drivetrain(&leftMotors, &rightMotors, 10.75, lemlib::Omniwheel::NEW_325, 360, 2);
@@ -43,7 +44,7 @@ lemlib::Drivetrain drivetrain(&leftMotors, &rightMotors, 10.75, lemlib::Omniwhee
 lemlib::ControllerSettings linearController(6, 0, 28, 3, 1, 100, 3, 500, 0);
 
 // angular controller
-lemlib::ControllerSettings angularController(4, 0, 30, 3, 1, 100, 3, 500, 0);
+lemlib::ControllerSettings angularController(4, 0, 33, 3, 1, 100, 3, 500, 0);
 
 // sensors
 lemlib::OdomSensors sensors(&vertical, nullptr, nullptr, nullptr, &imu);
@@ -54,6 +55,16 @@ lemlib::ExpoDriveCurve steerCurve(3, 10, 1.019);
 
 // chassis
 lemlib::Chassis chassis(drivetrain, linearController, angularController, sensors, &throttleCurve, &steerCurve);
+
+
+pros::Distance left_dist(18);
+pros::Distance front_dist(10);
+DsrSensor left_dsr(&left_dist, -5.375, 0.46875, 270, 15);
+DsrSensor front_dsr(&front_dist, -1.6875, 2.7375, 0, 15);
+DsrTracking DsrMain(&chassis, 20, false, 100, 100, 10.0, 6.0, 20);
+
+
+
 
 // trajectory
 SplinePath splinePath(50);
@@ -105,8 +116,11 @@ std::vector<WayPoint> myPath = {
 };
 
 void autonomous() {
-    chassis.setPose(0,0,0);
-    followPath(myPath);
+    chassis.setPose(-118, 118, 0);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);   // Distance reset on the left sensor
+    DsrMain.updateBotPose(&front_dsr);   // Distance reset on the left sensor
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
 }
 
 bool movingarm = false;
@@ -137,7 +151,7 @@ void setClaw(int power) {
     }
 }
 
-lemlib::PID liftPID(0.1, 0, 0.01, 3000, true);
+lemlib::PID liftPID(0.1, 0, 0.02, 3000, true);
 lemlib::PID clawPID(0.02, 0, 0.06, 3000, true);
 const int CLAW_TEST_POWER = 70;
 const uint32_t CLAW_JAM_WAIT = 200;
@@ -296,7 +310,7 @@ void opcontrol() {
             if (!timerStarted) {
                 timerStarted = true;
                 startTime = pros::millis();
-                clawtarget = clawstart + 34100;
+                clawtarget = clawstart + 33500;
                 movingclaw = true;
             }
 
