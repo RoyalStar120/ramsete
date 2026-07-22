@@ -16,6 +16,7 @@ const double MU          = 0.5;
 const double B           = 2.0;
 const double ZETA        = 0.7;
 
+bool intakeToggle = false;
 
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
@@ -80,28 +81,7 @@ void followPath(std::vector<WayPoint> waypoints) {
 double startpos;
 double clawstart;
 
-void initialize() {
-    pros::lcd::initialize();
-    chassis.calibrate();
-    
-    startpos = liftrot.get_position();
-    lift.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-    clawrotator.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-    clawstart = clawrot.get_position();
 
-    pros::Task screenTask([&]() {
-        while (true) {
-            pros::lcd::print(0, "X: %f", chassis.getPose().x);
-            pros::lcd::print(1, "Y: %f", chassis.getPose().y);
-            pros::lcd::print(2, "Theta: %f", chassis.getPose().theta);
-            pros::lcd::print(3, "liftrot: %d", liftrot.get_position());
-            pros::lcd::print(4, "clawrot: %d", clawrot.get_position());
-            pros::lcd::print(5, "claw rpm: %f", claw.get_actual_velocity());
-            lemlib::telemetrySink()->info("Chassis pose: {}", chassis.getPose());
-            pros::delay(50);
-        }
-    });
-}
 
 void disabled() {}
 
@@ -115,18 +95,10 @@ std::vector<WayPoint> myPath = {
     {48, 0, 0}
 };
 
-void autonomous() {
-    chassis.setPose(-118, 118, 0);
-    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
-    DsrMain.updateBotPose(&left_dsr);   // Distance reset on the left sensor
-    DsrMain.updateBotPose(&front_dsr);   // Distance reset on the left sensor
-    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
-}
 
-bool movingarm = false;
-bool movingclaw = false;
-const double increment = 3000;
-const double maxincrements = 5;
+
+const double increment = 3350;
+const double maxincrements = 4;
 double targetpos;
 double currentpos;
 double clawcurrent;
@@ -135,10 +107,6 @@ uint32_t clawMoveStart = 0;
 uint32_t clawRestartTime = 0;
 bool clawDisabled = false;
 int clawDirection = 0;
-
-const double CLAW_MIN_RPM = 140;
-const uint32_t CLAW_SPINUP_TIME = 400;
-const uint32_t CLAW_RESTART_DELAY = 300;
 
 void setClaw(int power) {
     if (power != 0 && power != clawDirection) {
@@ -151,10 +119,9 @@ void setClaw(int power) {
     }
 }
 
-lemlib::PID liftPID(0.1, 0, 0.02, 3000, true);
+lemlib::PID liftPID(0.1, 0, 0.85, 3000, true);
 lemlib::PID clawPID(0.02, 0, 0.06, 3000, true);
-const int CLAW_TEST_POWER = 70;
-const uint32_t CLAW_JAM_WAIT = 200;
+
 
 //helpers
 
@@ -198,11 +165,30 @@ void driveClawRotatorTo(double target, uint32_t timeoutMs = 2000) {
     clawPID.reset();
 }
 
+void score() {
+    clawtarget = clawstart + 37700;
+    pros::delay(700);
+    setClaw(127);
+    pros::delay(100);
+}
+
 //macro 1: lift to `amount` increments, then the open/rotate-up thingajamiggygy
 
 void liftToAmount(int amount) {
     double maxpos = startpos + maxincrements * increment;
     double target = startpos + amount * increment;
+    target = std::clamp(target, startpos, maxpos);
+
+    driveLiftTo(target);
+    pros::delay(500);
+    setClaw(127); // spin claw outward
+    pros::delay(500);
+    driveClawRotatorTo(clawstart + 51000); // rotate claw up to max
+}
+
+void liftone(int amount) {
+    double maxpos = startpos + maxincrements * increment;
+    double target = startpos + amount;
     target = std::clamp(target, startpos, maxpos);
 
     driveLiftTo(target);
@@ -252,14 +238,190 @@ void resetLiftAndClaw() {
     liftPID.reset();
     clawPID.reset();
 }
+const double CLAW_MIN_RPM = 120;          // normal running threshold
+const double CLAW_TEST_MIN_RPM = 15;      // recovery threshold
+const uint32_t CLAW_SPINUP_TIME = 500;
+
+const int CLAW_TEST_POWER = 30;
+bool resumeIntakeAfterJam = false;
+void clawAntiJamTask(void*) {
+    while (true) {
+
+        if (!clawDisabled) {
+
+            if (clawDirection != 0 &&
+                pros::millis() - clawMoveStart > CLAW_SPINUP_TIME) {
+
+                if (std::fabs(claw.get_actual_velocity()) < CLAW_MIN_RPM) {
+                    resumeIntakeAfterJam = intakeToggle;
+                    clawDisabled = true;
+                    intakeToggle = false;
+                    // Immediately begin slow recovery
+                    claw.move((clawDirection > 0) ?
+                        CLAW_TEST_POWER :
+                        -CLAW_TEST_POWER);
+                }
+            }
+
+        } else {
+
+            // Keep slowly pushing the whole time
+            claw.move((clawDirection > 0) ?
+                CLAW_TEST_POWER :
+                -CLAW_TEST_POWER);
+
+            // As soon as it starts moving again...
+            if (std::fabs(claw.get_actual_velocity()) >= CLAW_TEST_MIN_RPM) {
+
+                clawDisabled = false;
+                    if (resumeIntakeAfterJam) {
+                        intakeToggle = true;
+                    }
+                // Resume normal speed
+                resumeIntakeAfterJam = false;
+                claw.move(clawDirection);
+                clawMoveStart = pros::millis();
+            }
+        }
+
+        pros::delay(10);
+    }
+}
+
+void mechanismTask(void*) {
+    while (true) {
+
+        currentpos = liftrot.get_position();
+        clawcurrent = clawrot.get_position();
+
+        // Lift
+        {
+            double error = targetpos - currentpos;
+            double output = liftPID.update(error);
+            output = std::clamp(output, -127.0, 127.0);
+            lift.move(output);
+        }
+
+        // Claw rotator
+        {
+            double error = clawtarget - clawcurrent;
+            double output = clawPID.update(error);
+            output = std::clamp(output, -127.0, 127.0);
+            clawrotator.move(output);
+        }
+
+        pros::delay(10);
+    }
+}
+
+void initialize() {
+    pros::lcd::initialize();
+    chassis.calibrate();
+    startpos = liftrot.get_position();
+    //lift.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+    clawrotator.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+    clawstart = clawrot.get_position();
+    clawtarget = clawstart;
+    targetpos = startpos;
+    pros::Task antiJamTask(clawAntiJamTask);
+    pros::Task mechTask(mechanismTask);
+    pros::Task screenTask([&]() {
+        while (true) {
+            pros::lcd::print(0, "X: %f", chassis.getPose().x);
+            pros::lcd::print(1, "Y: %f", chassis.getPose().y);
+            pros::lcd::print(2, "Theta: %f", chassis.getPose().theta);
+            pros::lcd::print(3, "liftrot: %d", liftrot.get_position());
+            pros::lcd::print(4, "clawrot: %d", clawrot.get_position());
+            pros::lcd::print(5, "claw rpm: %f", claw.get_actual_velocity());
+            lemlib::telemetrySink()->info("Chassis pose: {}", chassis.getPose());
+            pros::delay(50);
+        }
+    });
+}
+void getstack() {
+    clawtarget = clawstart + 37700;
+    targetpos = startpos;
+}
+
+void autonomous() {
+    chassis.setPose(-0.217, -62.801, 180);
+    setClaw(-127);
+    chassis.moveToPoint(-15.281, -38.381, 800, {.forwards = false});
+    chassis.turnToPoint(-23.072, -46.925, 600, {.forwards = false}); 
+    clawtarget = clawstart + 510000;
+    pros::delay(600);
+    chassis.moveToPoint(-20.556, -46.966, 800, {.forwards = false}); // -20.056, -42.904
+    chassis.waitUntilDone();
+    clawtarget = clawstart + 37700;
+    pros::delay(400);
+    setClaw(127);
+    pros::delay(200);
+    targetpos = startpos + 2500;
+    chassis.moveToPoint(-12.768, -34.606, 1100);
+    chassis.turnToPoint(-19.546, -31.603, 700, {.forwards = false});
+    setClaw(-127);
+    chassis.moveToPoint(-19.546, -31.603, 800, {.forwards = false});
+    chassis.waitUntilDone();
+    pros::delay(75);
+    getstack();
+    pros::delay(1000);
+    targetpos = startpos + 3500;
+    chassis.turnToPoint(1, -59.239, 500);
+    chassis.moveToPoint(1, -59.239, 850);
+    chassis.turnToHeading(0, 600);
+    chassis.moveToPoint(1, -68.773, 550, {.forwards = false, .minSpeed = 70});
+    chassis.moveToPoint(1, -54.239, 900);
+    chassis.turnToPoint(18.819, -54.203, 800, {.forwards = false});
+    chassis.moveToPoint(18.819, -54.203, 900, {.forwards = false});
+    chassis.waitUntilDone();
+    pros::delay(500);
+    //DSR
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);   // Distance reset on the left sensor
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    ///ADD SCORING HERE WHEN IT ACTUALLY WORKS///
+    chassis.moveToPoint(-2, -54.239, 900);
+    chassis.turnToHeading(0, 800);
+    chassis.moveToPoint(-2, -68.773, 600, {.forwards = false, .minSpeed = 70});
+    chassis.moveToPoint(-2, -61.5, 900);
+    chassis.turnToPoint(-35, -62, 1000, {.forwards = false});
+    chassis.moveToPoint(-35, -62, 1000, {.forwards = false});
+    chassis.waitUntilDone();
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&front_dsr);   // Distance reset on the left sensor
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    pros::delay(100);
+    chassis.turnToPoint(-43.428, -50.695, 800, {.forwards = false});
+    chassis.moveToPoint(-43.428, -50.695, 800, {.forwards = false});
+    ///GRAB THE PIN///
+    chassis.turnToPoint(-29.072, -47.966, 600, {.forwards = false}); 
+    clawtarget = clawstart + 510000;
+    targetpos = startpos + 4500;
+    pros::delay(600);
+    chassis.moveToPoint(-29.556, -47.966, 600, {.forwards = false}); // -20.056, -42.904
+    chassis.waitUntilDone();
+    clawtarget = clawstart + 37700;
+    pros::delay(400);
+    setClaw(127);
+    pros::delay(200);
+    targetpos = startpos + 2500;
+    chassis.moveToPoint(-31.556, -47.966, 500);
+    chassis.turnToPoint(-22.567, -68.025, 700, {.forwards = false});
+    chassis.moveToPoint(-22.567, -68.025, 700, {.forwards = false, .maxSpeed = 30});
+    chassis.moveToPoint(-21.967, -67.425, 400, {.forwards = false});
+    getstack();
+    // DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    // DsrMain.updateBotPose(&left_dsr);   // Distance reset on the left sensor
+    // DsrMain.updateBotPose(&front_dsr);   // Distance reset on the left sensor
+    // DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+}
 
 void opcontrol() {
     clawMoveStart = pros::millis();
-    bool intakeToggle = false;
     currentpos = startpos;
-    targetpos = startpos;
+    //targetpos = startpos;
     clawcurrent = clawstart;
-    clawtarget = clawstart;
+    //clawtarget = clawstart;
     const double maxpos = startpos + maxincrements * increment;
     uint32_t startTime = 0;
     bool timerStarted = false;
@@ -275,8 +437,7 @@ void opcontrol() {
         chassis.arcade(leftY, rightX);
 
         if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R2) && targetpos > startpos) {
-            targetpos -= increment;
-            movingarm = true;
+            targetpos -= (increment / 2);
         }
 
         if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1) && targetpos < maxpos) {
@@ -285,19 +446,15 @@ void opcontrol() {
             } else {
                 targetpos += increment;
             }
-            movingarm = true;
 
             if (clawtarget < clawstart + 51000) {
                 clawtarget = clawstart + 51000;
-                movingclaw = true;
             }
         }
 
         if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_B)) {
             targetpos = startpos;
-            movingarm = true;
             clawtarget = clawstart;
-            movingclaw = true;
         }
 
         if (!clawDisabled) {
@@ -310,8 +467,7 @@ void opcontrol() {
             if (!timerStarted) {
                 timerStarted = true;
                 startTime = pros::millis();
-                clawtarget = clawstart + 33500;
-                movingclaw = true;
+                clawtarget = clawstart + 37700;
             }
 
             if (pros::millis() - startTime >= 500) {
@@ -322,75 +478,9 @@ void opcontrol() {
             wasHoldingA = false;
             timerStarted = false;
             clawtarget = clawstart + 51000;
-            movingclaw = true;
             setClaw(-127);
         }
 
-        if (!clawDisabled) {
-            // wait for spinup before checking
-            if (pros::millis() - clawMoveStart > CLAW_SPINUP_TIME) {
-                if (std::fabs(claw.get_actual_velocity()) < CLAW_MIN_RPM) {
-                    // detected jam
-                    claw.move(0);
-                    clawDisabled = true;
-                    // start the waiting period
-                    clawRestartTime = pros::millis();
-                }
-            }
-        }
-        else {
-            // wait 150ms after detecting jam before testing again
-            if (pros::millis() - clawRestartTime > CLAW_JAM_WAIT) {
-                // try spinning briefly
-                // gently test if jam cleared
-                claw.move((clawDirection > 0) ? CLAW_TEST_POWER : -CLAW_TEST_POWER);
-                pros::delay(100);
-
-                if (std::fabs(claw.get_actual_velocity()) >= CLAW_MIN_RPM) {
-                    // jam cleared
-                    clawDisabled = false;
-                    clawMoveStart = pros::millis();
-                }
-                else {
-                    // still jammed
-                    claw.move(0);
-                    // restart wait timer
-                    clawRestartTime = pros::millis();
-                }
-            }
-        }
-
-        if (movingclaw) {
-            double error = clawtarget - clawcurrent;
-            double output = clawPID.update(error);
-
-            if (output > 127) output = 127;
-            if (output < -127) output = -127;
-
-            clawrotator.move(output);
-
-            if (std::fabs(error) < 50) {
-                clawrotator.brake();
-                movingclaw = false;
-                clawPID.reset();
-            }
-        }
-
-        if (movingarm) {
-            double error = targetpos - currentpos;
-            double output = liftPID.update(error);
-
-            if (output > 127) output = 127;
-            if (output < -127) output = -127;
-
-            lift.move(output);
-
-            if (std::fabs(error) < 50) {
-                lift.brake();
-                movingarm = false;
-                liftPID.reset();
-            }
-        }
 
         if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)) {
             intakeToggle = !intakeToggle;
