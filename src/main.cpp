@@ -238,11 +238,11 @@ void resetLiftAndClaw() {
     liftPID.reset();
     clawPID.reset();
 }
-const double CLAW_MIN_RPM = 120;          // normal running threshold
+const double CLAW_MIN_RPM = 80;          // normal running threshold
 const double CLAW_TEST_MIN_RPM = 15;      // recovery threshold
 const uint32_t CLAW_SPINUP_TIME = 500;
 
-const int CLAW_TEST_POWER = 30;
+const int CLAW_TEST_POWER = 120;
 bool resumeIntakeAfterJam = false;
 void clawAntiJamTask(void*) {
     while (true) {
@@ -339,11 +339,32 @@ void initialize() {
     });
 }
 void getstack() {
-    clawtarget = clawstart + 37700;
-    targetpos = startpos;
+
+    targetpos = startpos;             // lower the lift
+
+    clawtarget = clawstart + 5000;    // go very far down, slightly past start
+    pros::delay(500);
+
+    clawtarget = clawstart + 35000;   // come back up, slightly lower than A
 }
 
-void autonomous() {
+void getstackfromwall() {
+    // Move claw slightly down from the wall position
+    clawtarget = clawstart + 35000;
+    pros::delay(1000);
+
+    // Now do the normal getstack motion
+    targetpos = startpos;
+
+    // Rotate claw farther down
+    clawtarget = clawstart + 5000;
+    pros::delay(500);
+
+    // Rotate back up slightly below the A position
+    clawtarget = clawstart + 35000;
+}
+
+void sawp() {
     chassis.setPose(-0.217, -62.801, 180);
     setClaw(-127);
     chassis.moveToPoint(-15.281, -38.381, 800, {.forwards = false});
@@ -416,6 +437,33 @@ void autonomous() {
     // DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
 }
 
+void skills() {
+    chassis.setPose(-69.104, 0.291, 90);
+    setClaw(-127);
+    chassis.moveToPoint(-63,0.291,700,{.maxSpeed=80});
+    chassis.waitUntilDone();
+    // chassis.moveToPoint(-69.104, 0.291,700,{.maxSpeed=105});
+    // chassis.moveToPoint(-63,0.291,700,{.maxSpeed=80});
+    // chassis.moveToPoint(-69.104, 0.291,700,{.maxSpeed=105});
+    // chassis.waitUntilDone();
+    // chassis.moveToPoint(-52.472, -16.756, 1200, {.forwards=false, .maxSpeed=100});
+    // chassis.waitUntilDone();
+    // clawtarget = clawstart + 510000;
+    // pros::delay(600);
+    // chassis.turnToHeading(135, 800, {.maxSpeed=100});
+    // chassis.waitUntilDone();
+    // chassis.moveToPoint(-49.77, -20.914,800,{.maxSpeed=80});
+    // clawtarget = clawstart + 37700;
+    // pros::delay(400);
+    // setClaw(127);
+    // pros::delay(200);
+    // targetpos = startpos + 2500;
+}
+
+void autonomous() {
+    
+}
+
 void opcontrol() {
     clawMoveStart = pros::millis();
     currentpos = startpos;
@@ -467,7 +515,7 @@ void opcontrol() {
             if (!timerStarted) {
                 timerStarted = true;
                 startTime = pros::millis();
-                clawtarget = clawstart + 37700;
+                clawtarget = clawstart + 33000;
             }
 
             if (pros::millis() - startTime >= 500) {
@@ -496,5 +544,16 @@ void opcontrol() {
             intake.move(0);
         }
         pros::delay(10);
+
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_LEFT)) {
+            getstack();
+        }
+
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_DOWN)) {
+            getstackfromwall();
+        }
     }
+        
+
+        
 }
