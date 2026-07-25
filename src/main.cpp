@@ -376,7 +376,7 @@ void getstackfromwall() {
     clawtarget = clawstart + 35000;
 }
 void elim() {
-    chassis.setPose(-41.125, -62.75, 180);
+    chassis.setPose(-40.625, -62.75, 180);
     liftPID = &liftPIDLight;
     liftPID->reset();
     chassis.moveToPoint(-30.079, -52.736, 900, {.forwards = false});
@@ -402,7 +402,7 @@ void elim() {
     //chassis.moveToPoint(-32.912, -66.486, 1000, {.earlyExitRange = 5});
     // chassis.swingToHeading(270, DriveSide::RIGHT, 1000, {.earlyExitRange = 5});
     chassis.moveToPoint(-48.495, -44.897, 800, {.forwards = false});
-    clawtarget = clawstart + 35400;
+    clawtarget = clawstart + 33000;
     chassis.turnToPoint(-23, -46, 900, {.forwards = false});
     chassis.moveToPoint(-23, -46., 1000, {.forwards = false});
     chassis.waitUntilDone();
@@ -424,7 +424,7 @@ void elim() {
     getstack();
     chassis.turnToPoint(18.323, -45.417, 700, {.forwards = false});
     targetpos = startpos + 4200;
-    clawtarget = clawstart + 36000;
+    clawtarget = clawstart + 33000;
     chassis.moveToPoint(18.323, -45.417, 1300, {.forwards = false});
     chassis.waitUntilDone();
     chassis.arcade(-127, 0);
@@ -538,9 +538,10 @@ void sawp() {
 void skills() {
 
     chassis.setPose(-69.104, 0.291, 90);
+    liftPID = &liftPIDLight;
+    //targetpos = startpos + 5100;
     setClaw(-127);
     chassis.moveToPoint(-63,0.291,700,{.maxSpeed=80});
-    targetpos = startpos + 5100;
     chassis.waitUntilDone();
     chassis.moveToPoint(-72, 0.291,1000,{.forwards=false,.minSpeed=120});
     chassis.moveToPoint(-63,0.291,700,{.maxSpeed=80});
@@ -548,34 +549,60 @@ void skills() {
     chassis.waitUntilDone();
     chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
     chassis.swingToHeading(-5,DriveSide::LEFT,800,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=80});
-    pros::delay(200);
+    intake.move(127);
     targetpos = startpos;
+    
     chassis.waitUntilDone();
-    chassis.moveToPoint(-62,-14,1200,{.forwards=false,.maxSpeed=90});
+    
+    chassis.moveToPoint(-61,-14,1200,{.forwards=false,.maxSpeed=90});
+    pros::delay(150);
     clawtarget = clawstart + 33000;
     chassis.waitUntilDone();
+    chassis.arcade(-127, 0);
+    pros::delay(300);
     setClaw(127);
     pros::delay(200);
     targetpos = startpos;
     chassis.waitUntilDone();
 
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
     DsrMain.updateBotPose(&front_dsr);   // Distance reset on the left sensor
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    pros::delay(100);
+    clawtarget=clawstart+50000;
+    setClaw(-127);
 
+    chassis.moveToPoint(-47.067,-6.154,800,{.maxSpeed=80});
+    chassis.turnToHeading(-40,700,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=90});
+    //chassis.turnToPoint(-23.783,-23.409,700,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=90});
+    chassis.waitUntilDone();
+    chassis.moveToPoint(-29.559,-19.632,800,{.forwards=false,.maxSpeed=70});
+    chassis.waitUntilDone();
+    getstack();
+    pros::delay(400);
+    getstack();
+    liftPID = &liftPIDHeavy;
+    liftPID->reset();
 
-    // chassis.moveToPoint(-52.472, -16.756, 1200, {.forwards=false, .maxSpeed=100});
-    // chassis.waitUntilDone();
-    // clawtarget = clawstart + 510000;
-    // pros::delay(600);
-    // chassis.turnToHeading(135, 800, {.maxSpeed=100});
-    // chassis.waitUntilDone();
-    // chassis.moveToPoint(-49.77, -20.914,800,{.maxSpeed=80});
-    // clawtarget = clawstart + 33000;
-    // pros::delay(400);
-    // setClaw(127);
-    // pros::delay(200);
-    // targetpos = startpos + 2500;
+    chassis.turnToHeading(-287,800,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=80});
+    targetpos = startpos+3500;
+    clawtarget=clawstart+25000;
+    chassis.moveToPoint(-46.859,-24.032,700,{.forwards=false,.maxSpeed=90});
+    chassis.waitUntilDone();
+    chassis.arcade(-127, 0);
+    
+    pros::delay(50);
+    setClaw(127);
+
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&right_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+
+    pros::delay(300);
+    chassis.moveToPoint(-27.228,-26.111,700,{.maxSpeed=100});
+    chassis.turnToHeading(225,700,{.maxSpeed=100});
+    chassis.moveToPoint(-65.917,-63.335,1000,{.maxSpeed=90});
 }
 void ethan() {
     chassis.setPose(-62.5, -0.3125, 90);
@@ -599,8 +626,9 @@ void ethan() {
     // DsrMain.updateBotPose(&right_dsr);   // Distance reset on the left sensor
     // DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
     clawtarget = clawstart + 51000;
-    chassis.moveToPoint(-35.982, 8.652, 900);
+    chassis.moveToPoint(-35.982, 8.652, 600);
     setClaw(-127);
+    intake.move(127);
     chassis.turnToPoint(-25.246, 17.263, 800);
     clawtarget = clawstart;
     targetpos = startpos;
@@ -622,12 +650,12 @@ void ethan() {
     setClaw(-127);
     targetpos = startpos;
     clawtarget = clawstart + 51000;
-    chassis.turnToPoint(-32.66, -17.739, 900, {.forwards = false});
+    chassis.turnToPoint(-32.16, -16.639, 900, {.forwards = false});
     chassis.waitUntilDone();
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
     DsrMain.updateBotPose(&left_dsr);   // Distance reset on the left sensor
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
-    chassis.moveToPoint(-32.66, -17.739, 430, {.forwards = false});
+    chassis.moveToPoint(-32.16, -16.639, 430, {.forwards = false});
     chassis.waitUntilDone();
     getstack();
     pros::delay(75);
@@ -651,7 +679,7 @@ void ethan() {
     clawtarget = clawstart + 51000;
 }
 void autonomous() {
-    elim();
+    ethan();
 }
 
 void opcontrol() {
