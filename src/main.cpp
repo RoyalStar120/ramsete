@@ -554,7 +554,7 @@ void skills() {
     
     chassis.waitUntilDone();
     
-    chassis.moveToPoint(-61,-14,1200,{.forwards=false,.maxSpeed=90});
+    chassis.moveToPoint(-60,-14,1200,{.forwards=false,.maxSpeed=90});
     pros::delay(150);
     clawtarget = clawstart + 33000;
     chassis.waitUntilDone();
@@ -602,7 +602,52 @@ void skills() {
     pros::delay(300);
     chassis.moveToPoint(-27.228,-26.111,700,{.maxSpeed=100});
     chassis.turnToHeading(225,700,{.maxSpeed=100});
-    chassis.moveToPoint(-65.917,-63.335,1000,{.maxSpeed=90});
+    intake.move(-70);
+    chassis.moveToPoint(-63.917,-58.5,1000,{.maxSpeed=90});
+    chassis.turnToHeading(270,500,{.maxSpeed=90});
+    chassis.waitUntilDone();
+    pros::delay(500);
+    targetpos=startpos;
+    clawtarget=clawstart;
+    pros::delay(200);
+    intake.move(127);
+    chassis.moveToPoint(-72.272,-55.166,1000,{.maxSpeed=80});
+    chassis.waitUntilDone();
+    pros::delay(800);
+
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+
+
+
+    chassis.moveToPoint(-38.543,-48.345,800,{.forwards=false,.maxSpeed=80});
+    chassis.moveToPoint(-25.03,-47.732,1000,{.forwards=false,.maxSpeed=70});
+    clawtarget = clawstart + 33000;
+    chassis.waitUntilDone();
+    chassis.arcade(-127, 0);
+    pros::delay(300);
+    setClaw(127);
+    pros::delay(200);
+    targetpos = startpos;
+
+    chassis.moveToPoint(-63.917,-58.5,1000,{.maxSpeed=90});
+    setClaw(-127);
+    clawtarget=clawstart;
+    chassis.moveToPoint(-72.272,-58.5,1000,{.maxSpeed=80});
+
+    pros::delay(2000);
+
+    chassis.moveToPoint(-38.543,-53.345,800,{.forwards=false,.maxSpeed=80});
+    targetpos = startpos+3500;
+    clawtarget=clawstart+25000;
+    chassis.moveToPoint(-25.03,-47.732,1000,{.forwards=false,.maxSpeed=70});
+    chassis.waitUntilDone();
+    chassis.arcade(-127, 0);
+    
+    pros::delay(50);
+    setClaw(127);
+    
 }
 void ethan() {
     chassis.setPose(-62.5, -0.3125, 90);
@@ -679,7 +724,7 @@ void ethan() {
     clawtarget = clawstart + 51000;
 }
 void autonomous() {
-    ethan();
+    skills();
 }
 
 void opcontrol() {
