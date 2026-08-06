@@ -111,6 +111,11 @@ uint32_t clawMoveStart = 0;
 uint32_t clawRestartTime = 0;
 bool clawDisabled = false;
 int clawDirection = 0;
+double preAtargetpos = 0;
+bool shotFired = false;
+
+bool releasing = false;
+uint32_t releaseStart = 0;
 
 void setClaw(int power) {
     if (power != 0 && power != clawDirection) {
@@ -249,7 +254,7 @@ void resetLiftAndClaw() {
     liftPID->reset();
     clawPID.reset();
 }
-const double CLAW_MIN_RPM = 80;          // normal running threshold
+const double CLAW_MIN_RPM = 50;          // normal running threshold
 const double CLAW_TEST_MIN_RPM = 15;      // recovery threshold
 const uint32_t CLAW_SPINUP_TIME = 500;
 
@@ -351,12 +356,34 @@ void initialize() {
         }
     });
 }
+
+
+void scoreA(uint32_t holdTimeMs = 300) {
+    double maxpos = startpos + maxincrements * increment;
+    double preTarget = targetpos;
+
+    // "press" phase
+    clawtarget = clawstart + 33000;
+    targetpos = std::clamp(targetpos - (increment / 2), startpos, maxpos);
+    pros::delay(500);
+    setClaw(127);
+    pros::delay(holdTimeMs);   // how long the shot spins out, like holding A
+
+    // "release" phase
+    targetpos = std::clamp(preTarget + 1000, startpos, maxpos);
+    clawtarget = clawstart + 60000;
+    setClaw(-127);
+    pros::delay(400);
+    setClaw(127);
+    pros::delay(300);
+    setClaw(-127);
+}
+
 void getstack() {
     targetpos = startpos;
     pros::delay(200);             // lower the lift
-    clawtarget = clawstart + 3900;    // go very far down, slightly past start
+    clawtarget=clawstart+3900;
     pros::delay(600);
-
     clawtarget = clawstart + 35000;   // come back up, slightly lower than A
 }
 
@@ -535,31 +562,30 @@ void sawp() {
     // DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
 }
 
-void skills() {
+void skills98() {
 
     chassis.setPose(-69.104, 0.291, 90);
     liftPID = &liftPIDLight;
+
     //targetpos = startpos + 5100;
     setClaw(-127);
-    chassis.moveToPoint(-63,0.291,700,{.maxSpeed=80});
-    chassis.waitUntilDone();
-    chassis.moveToPoint(-72, 0.291,1000,{.forwards=false,.minSpeed=120});
-    chassis.moveToPoint(-63,0.291,700,{.maxSpeed=80});
-    chassis.moveToPoint(-72, 0.291,1000,{.forwards=false, .minSpeed=120});
+    chassis.moveToPoint(-63,0.291,700,{.maxSpeed=110});
+    chassis.moveToPoint(-72, 0.291,800,{.forwards=false,.minSpeed=120});
+    chassis.moveToPoint(-63,0.291,700,{.maxSpeed=110});
+    chassis.moveToPoint(-72, 0.291,800,{.forwards=false, .minSpeed=120});
     chassis.waitUntilDone();
     chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
-    chassis.swingToHeading(-5,DriveSide::LEFT,800,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=80});
+    chassis.swingToHeading(-10,DriveSide::LEFT,800,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=90});
     intake.move(127);
     targetpos = startpos;
     
     chassis.waitUntilDone();
-    
-    chassis.moveToPoint(-60,-14,1200,{.forwards=false,.maxSpeed=90});
+    chassis.moveToPoint(-60,-14,1000,{.forwards=false,.maxSpeed=90});
     pros::delay(150);
     clawtarget = clawstart + 33000;
     chassis.waitUntilDone();
     chassis.arcade(-127, 0);
-    pros::delay(300);
+    pros::delay(200);
     setClaw(127);
     pros::delay(200);
     targetpos = startpos;
@@ -575,134 +601,724 @@ void skills() {
 
     chassis.moveToPoint(-47.067,-6.154,800,{.maxSpeed=80});
     chassis.turnToHeading(-40,700,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=90});
-    //chassis.turnToPoint(-23.783,-23.409,700,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=90});
     chassis.waitUntilDone();
-    chassis.moveToPoint(-29.559,-19.632,800,{.forwards=false,.maxSpeed=70});
+    chassis.moveToPoint(-28.559,-19.332,800,{.forwards=false,.maxSpeed=70});
+    lift.move(-30);
+    targetpos=startpos;
     chassis.waitUntilDone();
-    getstack();
-    pros::delay(400);
-    getstack();
-    liftPID = &liftPIDHeavy;
-    liftPID->reset();
+    
+    
+    pros::Task liftTask1([]() {
+    while (true) {
+        lift.move(-100);
+        pros::delay(10);
+    }
+    });
 
-    chassis.turnToHeading(-287,800,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=80});
-    targetpos = startpos+3500;
-    clawtarget=clawstart+25000;
+    targetpos = startpos;
+    chassis.waitUntilDone();
+    pros::delay(150);
+
+    targetpos = startpos;
+    clawtarget=clawstart+3900;
+    pros::delay(600);
+    clawtarget = clawstart + 35000;   // come back up, slightly lower than A
+
+    liftTask1.remove();
+    lift.move(0);
+
+
+
+    liftPID = &liftPIDHeavy;
+    lift.move(0);
+    chassis.turnToHeading(-287,800,{.maxSpeed=80});
+    clawtarget=clawstart+30000;
+    targetpos = startpos+4000;
     chassis.moveToPoint(-46.859,-24.032,700,{.forwards=false,.maxSpeed=90});
     chassis.waitUntilDone();
     chassis.arcade(-127, 0);
     
-    pros::delay(50);
+    pros::delay(100);
     setClaw(127);
+    // scoreA();
 
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
     DsrMain.updateBotPose(&right_dsr);
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
 
     pros::delay(300);
-    chassis.moveToPoint(-27.228,-26.111,700,{.maxSpeed=100});
-    chassis.turnToHeading(225,700,{.maxSpeed=100});
-    intake.move(-70);
-    chassis.moveToPoint(-63.917,-58.5,1000,{.maxSpeed=90});
-    chassis.turnToHeading(270,500,{.maxSpeed=90});
+    liftPID = &liftPIDLight;
+    clawtarget=clawstart+40000;
+    chassis.moveToPoint(-30.332,-23.513,800,{.maxSpeed=110});
     chassis.waitUntilDone();
-    pros::delay(500);
+    chassis.moveToPoint(-29.604,-30.373,900,{.maxSpeed=100});
+    chassis.waitUntilDone();
+    targetpos=startpos;
+    chassis.turnToHeading(42,900,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=85});
+    clawtarget=clawstart+50000;
+    
+    chassis.waitUntilDone();
+    chassis.moveToPoint(-41.375,-42.909,800,{.forwards=false,.maxSpeed=85});
+    setClaw(-127);
+    chassis.waitUntilDone();
+
+
+
+    pros::Task liftTask2([]() {
+    while (true) {
+        lift.move(-127);
+        pros::delay(10);
+    }
+    });
+
+    targetpos = startpos;
+    chassis.waitUntilDone();
+
+    getstack();
+
+    liftTask2.remove();
+    lift.move(0);
+    
+
+
+
+    chassis.moveToPoint(-51.375,-51.509,800,{.forwards=false,.maxSpeed=95});
+    liftPID = &liftPIDHeavy;
+
+    
+    chassis.turnToHeading(153,700,{.maxSpeed=100});
+    clawtarget=clawstart+30000;
+    targetpos = startpos+6800;
+    chassis.waitUntilDone();
+    chassis.moveToPoint(-53.547,-30.176,900,{.forwards=false,.maxSpeed=90});
+    chassis.waitUntilDone();
+    chassis.arcade(-70, 0);
+    
+    pros::delay(100);
+    // setClaw(127);
+    scoreA();
+
+    clawtarget=clawstart+600000;
+    // targetpos=startpos+6500;
+
+
+
+
+
+//////// MATCHHHHHH LOADDINGGGGGG
+
+
+
+
+
+
+    chassis.moveToPoint(-49.77,-59.854,900,{.maxSpeed=100});
+    pros::delay(400);
     targetpos=startpos;
     clawtarget=clawstart;
-    pros::delay(200);
-    intake.move(127);
-    chassis.moveToPoint(-72.272,-55.166,1000,{.maxSpeed=80});
     chassis.waitUntilDone();
+    chassis.turnToHeading(270,750,{.maxSpeed=100});
+    chassis.waitUntilDone();
+
+    chassis.moveToPoint(-72.272,-59.466,700,{.maxSpeed=110,.minSpeed=20});
+    chassis.waitUntilDone();
+    chassis.arcade(100,0);
     pros::delay(800);
 
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
     DsrMain.updateBotPose(&left_dsr);
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
-
-
-    //FIRST STACK
+    setClaw(-127);
+    liftPID = &liftPIDHeavy;
+    //first stack
     chassis.moveToPoint(-38.543,-48.345,800,{.forwards=false,.maxSpeed=80});
-    chassis.moveToPoint(-25.03,-47.732,1000,{.forwards=false,.maxSpeed=70});
+    chassis.moveToPoint(-25.03,-47.732,800,{.forwards=false,.maxSpeed=70});
+    pros::delay(200);
+    clawtarget = clawstart + 33000;
+    chassis.waitUntilDone();
+    chassis.arcade(-80, 0);
+    pros::delay(300);
+    chassis.arcade(0,0);
+    setClaw(127);
+    pros::delay(200);
+    targetpos = startpos;
+
+
+
+    chassis.moveToPoint(-63.917,-59.8,800,{.maxSpeed=90});
+    chassis.waitUntilDone();
+    chassis.turnToHeading(270,500,{.maxSpeed=90});
+    setClaw(-127);
+    clawtarget=clawstart;
+    
+    chassis.moveToPoint(-72.272,-58.6,900,{.maxSpeed=100});
+    chassis.waitUntilDone();
+    chassis.arcade(90,0);
+    pros::delay(1000);
+
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+
+    // //SECOND STACK
+    chassis.moveToPoint(-38.543,-49.345,800,{.forwards=false,.maxSpeed=80});
+    pros::delay(200);
+    clawtarget=clawstart+33000;
+    targetpos = startpos+3800;
+    chassis.moveToPoint(-25.03,-47.732,800,{.forwards=false,.maxSpeed=70});
+    
+    chassis.waitUntilDone();
+    chassis.arcade(-100, 0);
+    
+    pros::delay(150);
+    chassis.arcade(0,0);
+    setClaw(127);
+    pros::delay(200);
+    clawtarget=clawstart+60000;
+
+    chassis.moveToPoint(-63.917,-59.4,1000,{.maxSpeed=90});
+    setClaw(-127);
+    chassis.waitUntilDone();
+    chassis.turnToHeading(270,500,{.maxSpeed=90});
+    clawtarget=clawstart;
+    chassis.moveToPoint(-72.272,-58.9,900,{.maxSpeed=80});
+    setClaw(-127);
+    targetpos = startpos;
+    clawtarget = clawstart;
+    chassis.waitUntilDone();
+    chassis.arcade(90,0);
+    pros::delay(1000);
+
+
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+
+    
+
+    //THIRD STACK
+    chassis.moveToPoint(-38.543,-48.345,800,{.forwards=false,.maxSpeed=80});
+    clawtarget=clawstart+28000;
+    targetpos = startpos+6500;
+    chassis.moveToPoint(-25.03,-47.732,800,{.forwards=false,.maxSpeed=70});
+    chassis.waitUntilDone();
+    chassis.arcade(-80, 0);
+
+    pros::delay(300);
+    chassis.arcade(0,0);
+
+    setClaw(127);
+    pros::delay(200);
+
+    clawtarget=clawstart+60000;
+
+
+    chassis.moveToPoint(-63.917,-58.9,800,{.maxSpeed=90});
+    setClaw(-127);
+    chassis.turnToHeading(270,500,{.maxSpeed=100});
+    clawtarget=clawstart;
+    targetpos=startpos;
+    chassis.moveToPoint(-72.272,-57.9,900,{.maxSpeed=100});
+    
+    setClaw(-127);
+    chassis.waitUntilDone();
+    chassis.arcade(100,0);
+    pros::delay(1000);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+
+    
+    //FOURTH STACK
+    chassis.moveToPoint(-38.543,-48.345,800,{.forwards=false,.maxSpeed=80});
+    clawtarget=clawstart+30000;
+    targetpos = startpos+9000;
+    chassis.moveToPoint(-25.03,-47.232,800,{.forwards=false,.maxSpeed=70});
+    chassis.waitUntilDone();
+    chassis.arcade(-70, 0);
+
+    pros::delay(300);
+    chassis.arcade(0,0);
+
+    pros::delay(400);
+    setClaw(127);
+    pros::delay(200);
+
+    clawtarget=clawstart+60000;
+
+    chassis.moveToPoint(-63.917,-58,900,{.maxSpeed=100});
+    chassis.turnToHeading(270,400,{.maxSpeed=100});
+    setClaw(-127);
+    clawtarget=clawstart;
+    targetpos=startpos;
+    chassis.moveToPoint(-72.272,-58,600,{.maxSpeed=100});
+    
+    setClaw(-127);
+    
+    chassis.waitUntilDone();
+    chassis.arcade(100,0);
+    pros::delay(1000);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+
+    
+    //FIFTH STACK
+    chassis.moveToPoint(-38.543,-48.345,800,{.forwards=false,.maxSpeed=80});
+    clawtarget=clawstart+33000;
+    targetpos = startpos+11300;
+    chassis.moveToPoint(-25.03,-47.732,800,{.forwards=false,.maxSpeed=70});
+    chassis.waitUntilDone();
+    chassis.arcade(-70, 0);
+
+    pros::delay(300);
+    chassis.arcade(0,0);
+
+    pros::delay(400);
+    setClaw(127);
+    pros::delay(200);
+
+    targetpos=startpos+11000;
+    clawtarget=clawstart+60000;
+
+
+    // //OTHER GOAL
+    
+
+    chassis.moveToPoint(-63.917,-58.4,1000,{.maxSpeed=90});
+    setClaw(-127);
+    clawtarget=clawstart;
+    targetpos=startpos;
+    chassis.turnToHeading(270,400,{.maxSpeed=100});
+    
+    chassis.moveToPoint(-72.272,-58.4,900,{.maxSpeed=100});
+    setClaw(-127);
+    chassis.waitUntilDone();
+    chassis.arcade(100, 0);
+    pros::delay(1000);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+
+    
+    //SIXTH STACK
+    chassis.moveToPoint(-58.314,-48.148,800,{.forwards=false,.maxSpeed=80});
+    chassis.waitUntilDone();
+    chassis.turnToHeading(180,800,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=80});
+    clawtarget=clawstart+30000;
+    targetpos = startpos+9000;
+    chassis.waitUntilDone();
+    chassis.moveToPoint(-57.483,-20.448,1200,{.forwards=false,.maxSpeed=70});
+    chassis.waitUntilDone();
+    chassis.arcade(-60, 0);
+
+    pros::delay(300);
+    chassis.arcade(0,0);
+    pros::delay(600);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&right_dsr);
+    DsrMain.updateBotPose(&front_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+
+
+
+    setClaw(127);
+    pros::delay(300);
+
+
+
+    ///PARKINGGGGGGGGGGG
+    
+
+    chassis.moveToPoint(-53.154, -31.353, 500, {.maxSpeed=80, .earlyExitRange = 4});
+    chassis.turnToHeading(80,900,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=90, .earlyExitRange = 4});
+    pros::delay(400);
+    targetpos = startpos;
+    clawtarget = clawstart;
+    chassis.moveToPoint(6, chassis.getPose().y, 1000, {.maxSpeed=100, .earlyExitRange = 5});
+    //chassis.waitUntilDone();
+    chassis.turnToHeading(0, 800, {.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=80});
+    chassis.waitUntilDone();
+    chassis.moveToPoint(chassis.getPose().x, -75, 1300, {.forwards = false, .minSpeed = 120});
+    chassis.waitUntilDone();
+    chassis.moveToPoint(chassis.getPose().x, -53, 1000);
+    chassis.waitUntilDone();
+    chassis.moveToPoint(chassis.getPose().x, -75, 1000, {.forwards = false, .minSpeed = 120});
+    chassis.waitUntilDone();
+    chassis.moveToPoint(0,-8,3000,{.minSpeed=100});
+}
+
+
+
+
+
+
+
+
+
+
+
+
+void skills88() {
+
+    chassis.setPose(-69.104, 0.291, 90);
+    liftPID = &liftPIDLight;
+
+    //targetpos = startpos + 5100;
+    setClaw(-127);
+    chassis.moveToPoint(-63,0.291,700,{.maxSpeed=110});
+    chassis.moveToPoint(-72, 0.291,800,{.forwards=false,.minSpeed=120});
+    chassis.moveToPoint(-63,0.291,700,{.maxSpeed=110});
+    chassis.moveToPoint(-72, 0.291,800,{.forwards=false, .minSpeed=120});
+    chassis.waitUntilDone();
+    chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
+    chassis.swingToHeading(-10,DriveSide::LEFT,800,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=90});
+    intake.move(127);
+    targetpos = startpos;
+    
+    chassis.waitUntilDone();
+    chassis.moveToPoint(-60,-14,1000,{.forwards=false,.maxSpeed=90});
+    pros::delay(150);
     clawtarget = clawstart + 33000;
     chassis.waitUntilDone();
     chassis.arcade(-127, 0);
-    pros::delay(300);
+    pros::delay(200);
     setClaw(127);
     pros::delay(200);
     targetpos = startpos;
+    chassis.waitUntilDone();
 
-    chassis.moveToPoint(-63.917,-58.5,1000,{.maxSpeed=90});
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.updateBotPose(&front_dsr);   // Distance reset on the left sensor
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    pros::delay(100);
+    clawtarget=clawstart+50000;
     setClaw(-127);
-    clawtarget=clawstart;
-    chassis.moveToPoint(-72.272,-58.5,1000,{.maxSpeed=80});
-    pros::delay(2000);
-    //SECOND STACK
-    chassis.moveToPoint(-38.543,-53.345,800,{.forwards=false,.maxSpeed=80});
-    targetpos = startpos+3500;
-    clawtarget=clawstart+25000;
-    chassis.moveToPoint(-25.03,-47.732,1000,{.forwards=false,.maxSpeed=70});
+
+    chassis.moveToPoint(-47.067,-6.154,800,{.maxSpeed=80});
+    chassis.turnToHeading(-40,700,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=90});
+    chassis.waitUntilDone();
+    chassis.moveToPoint(-28.559,-19.332,800,{.forwards=false,.maxSpeed=70});
+    lift.move(-30);
+    targetpos=startpos;
+    chassis.waitUntilDone();
+    
+    
+    pros::Task liftTask1([]() {
+    while (true) {
+        lift.move(-100);
+        pros::delay(10);
+    }
+    });
+
+    targetpos = startpos;
+    chassis.waitUntilDone();
+    pros::delay(150);
+
+    targetpos = startpos;
+    clawtarget=clawstart+3900;
+    pros::delay(600);
+    clawtarget = clawstart + 35000;   // come back up, slightly lower than A
+
+    liftTask1.remove();
+    lift.move(0);
+
+
+
+    liftPID = &liftPIDHeavy;
+    lift.move(0);
+    chassis.turnToHeading(-287,800,{.maxSpeed=80});
+    clawtarget=clawstart+28000;
+    targetpos = startpos+4000;
+    chassis.moveToPoint(-46.859,-24.032,700,{.forwards=false,.maxSpeed=90});
     chassis.waitUntilDone();
     chassis.arcade(-127, 0);
     
-    pros::delay(300);
-    setClaw(127);
-    pros::delay(200);
+    pros::delay(100);
+    // setClaw(127);
+    scoreA();
 
-    chassis.moveToPoint(-72.272, -58.5, 800);
-    setClaw(-127);
-    targetpos = startpos;
-    clawtarget = clawstart;
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&right_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    liftPID = &liftPIDLight;
+    clawtarget=clawstart+40000;
+    chassis.moveToPoint(-30.332,-23.513,800,{.maxSpeed=110});
     chassis.waitUntilDone();
+    chassis.moveToPoint(-29.604,-30.373,900,{.maxSpeed=100});
+    chassis.waitUntilDone();
+    targetpos=startpos;
+    chassis.turnToHeading(42,900,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=85});
+    clawtarget=clawstart+50000;
+    
+    chassis.waitUntilDone();
+    chassis.moveToPoint(-42.375,-43.909,800,{.forwards=false,.maxSpeed=85});
+    setClaw(-127);
+    chassis.waitUntilDone();
+
+
+
+    pros::Task liftTask2([]() {
+    while (true) {
+        lift.move(-127);
+        pros::delay(10);
+    }
+    });
+
+    targetpos = startpos;
+    chassis.waitUntilDone();
+
+    getstack();
+
+    liftTask2.remove();
+    lift.move(0);
+    
+
+
+
+    chassis.moveToPoint(-51.375,-51.509,800,{.forwards=false,.maxSpeed=95});
+    liftPID = &liftPIDHeavy;
+
+    
+    chassis.turnToHeading(153,700,{.maxSpeed=100});
+    clawtarget=clawstart+30000;
+    targetpos = startpos+6800;
+    chassis.waitUntilDone();
+    chassis.moveToPoint(-53.547,-30.176,900,{.forwards=false,.maxSpeed=90});
+    chassis.waitUntilDone();
+    chassis.arcade(-70, 0);
+    
+    pros::delay(100);
+    // setClaw(127);
+    scoreA();
+
+    clawtarget=clawstart+600000;
+    // targetpos=startpos+6500;
+
+
+
+
+
+//////// MATCHHHHHH LOADDINGGGGGG
+
+
+
+
+
+
+    chassis.moveToPoint(-49.77,-59.854,900,{.maxSpeed=100});
+    pros::delay(400);
+    targetpos=startpos;
+    clawtarget=clawstart;
+    chassis.waitUntilDone();
+    chassis.turnToHeading(270,750,{.maxSpeed=100});
+    chassis.waitUntilDone();
+
+    chassis.moveToPoint(-72.272,-59.466,700,{.maxSpeed=110,.minSpeed=20});
+    chassis.waitUntilDone();
+    chassis.arcade(100,0);
+    pros::delay(800);
+
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    setClaw(-127);
+    liftPID = &liftPIDHeavy;
+    //first stack
+    chassis.moveToPoint(-38.543,-48.345,800,{.forwards=false,.maxSpeed=80});
+    chassis.moveToPoint(-25.03,-47.732,800,{.forwards=false,.maxSpeed=70});
+    pros::delay(200);
+    clawtarget = clawstart + 33000;
+    chassis.waitUntilDone();
+    chassis.arcade(-80, 0);
+    pros::delay(300);
+    chassis.arcade(0,0);
+    setClaw(127);
+    //scoreA();
+    pros::delay(200);
+    targetpos = startpos;
+
+
+
+    chassis.moveToPoint(-63.917,-59.8,800,{.maxSpeed=90});
+    chassis.waitUntilDone();
+    chassis.turnToHeading(270,500,{.maxSpeed=90});
+    setClaw(-127);
+    clawtarget=clawstart;
+    
+    chassis.moveToPoint(-72.272,-58.6,900,{.maxSpeed=100});
+    chassis.waitUntilDone();
+    chassis.arcade(90,0);
+    pros::delay(1000);
 
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
     DsrMain.updateBotPose(&left_dsr);
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
 
-    pros::delay(2000);
+    // //SECOND STACK
+    chassis.moveToPoint(-38.543,-49.345,800,{.forwards=false,.maxSpeed=80});
+    pros::delay(200);
+    clawtarget=clawstart+33000;
+    targetpos = startpos+3800;
+    chassis.moveToPoint(-25.03,-47.732,800,{.forwards=false,.maxSpeed=70});
+    
+    chassis.waitUntilDone();
+    chassis.arcade(-100, 0);
+    
+    pros::delay(150);
+    chassis.arcade(0,0);
+    // setClaw(127);
+    scoreA();
+    pros::delay(200);
+    clawtarget=clawstart+60000;
+
+    chassis.moveToPoint(-63.917,-59.4,1000,{.maxSpeed=90});
+    setClaw(-127);
+    chassis.waitUntilDone();
+    chassis.turnToHeading(270,500,{.maxSpeed=90});
+    clawtarget=clawstart;
+    chassis.moveToPoint(-72.272,-58.9,900,{.maxSpeed=80});
+    setClaw(-127);
+    targetpos = startpos;
+    clawtarget = clawstart;
+    chassis.waitUntilDone();
+    chassis.arcade(90,0);
+    pros::delay(1000);
+
+
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+
+    
 
     //THIRD STACK
-    chassis.moveToPoint(-38.543,-53.345,800,{.forwards=false,.maxSpeed=80});
-    targetpos = startpos+6850;
-    clawtarget=clawstart+25000;
-    chassis.moveToPoint(-25.03,-47.732,1000,{.forwards=false,.maxSpeed=70});
+    chassis.moveToPoint(-38.543,-48.345,800,{.forwards=false,.maxSpeed=80});
+    clawtarget=clawstart+28000;
+    targetpos = startpos+6500;
+    chassis.moveToPoint(-25.03,-47.732,800,{.forwards=false,.maxSpeed=70});
     chassis.waitUntilDone();
-    chassis.arcade(-127, 0);
+    chassis.arcade(-80, 0);
 
     pros::delay(300);
+    chassis.arcade(0,0);
 
-    setClaw(127);
-    pros::delay(200);
+    // setClaw(127);
+    scoreA();
+    pros::delay(100);
 
-    chassis.moveToPoint(-72.272, -58.5, 800);
-    clawtarget = clawstart;
-    targetpos = startpos;
+    clawtarget=clawstart+60000;
+
+
+    chassis.moveToPoint(-63.917,-58.9,800,{.maxSpeed=90});
+    setClaw(-127);
+    chassis.turnToHeading(270,500,{.maxSpeed=100});
+    clawtarget=clawstart;
+    targetpos=startpos;
+    chassis.moveToPoint(-72.272,-57.9,900,{.maxSpeed=100});
+    
     setClaw(-127);
     chassis.waitUntilDone();
-
+    chassis.arcade(100,0);
+    pros::delay(1000);
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
     DsrMain.updateBotPose(&left_dsr);
     DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
 
-    pros::delay(2000);
+    
     //FOURTH STACK
-    chassis.moveToPoint(-38.543,-53.345,800,{.forwards=false,.maxSpeed=80});
-    targetpos = startpos+10200;
-    clawtarget=clawstart+25000;
-    chassis.moveToPoint(-25.03,-47.732,1000,{.forwards=false,.maxSpeed=70});
+    chassis.moveToPoint(-38.543,-48.345,800,{.forwards=false,.maxSpeed=80});
+    clawtarget=clawstart+30000;
+    targetpos = startpos+9000;
+    chassis.moveToPoint(-25.03,-47.232,800,{.forwards=false,.maxSpeed=70});
     chassis.waitUntilDone();
-    chassis.arcade(-127, 0);
+    chassis.arcade(-70, 0);
 
     pros::delay(300);
+    chassis.arcade(0,0);
+
+    pros::delay(400);
+    // setClaw(127);
+    scoreA();
+    pros::delay(100);
+
+    clawtarget=clawstart+60000;
+
+    chassis.moveToPoint(-63.917,-58,900,{.maxSpeed=100});
+    chassis.turnToHeading(270,400,{.maxSpeed=100});
+    setClaw(-127);
+    clawtarget=clawstart;
+    targetpos=startpos;
+    chassis.moveToPoint(-72.272,-58,600,{.maxSpeed=100});
+    
+    setClaw(-127);
+    
+    chassis.waitUntilDone();
+    chassis.arcade(100,0);
+    pros::delay(1000);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&left_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
 
 
-    setClaw(127);
-    pros::delay(200);
+
+    
+    //SIXTH STACK
+    chassis.moveToPoint(-58.314,-48.148,800,{.forwards=false,.maxSpeed=80});
+    chassis.waitUntilDone();
+    chassis.turnToHeading(180,800,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=80});
+    clawtarget=clawstart+30000;
+    targetpos = startpos+9000;
+    chassis.waitUntilDone();
+    chassis.moveToPoint(-57.483,-20.448,1200,{.forwards=false,.maxSpeed=70});
+    chassis.waitUntilDone();
+    chassis.arcade(-60, 0);
+
+    pros::delay(300);
+    chassis.arcade(0,0);
+    pros::delay(400);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
+    DsrMain.updateBotPose(&right_dsr);
+    DsrMain.updateBotPose(&front_dsr);
+    DsrMain.setDsrPose(chassis.getPose());  // Reset dsr Pose to Lemlib Pose
 
 
 
+    // setClaw(127);
+    scoreA();
+    pros::delay(100);
 
 
+
+    ///PARKINGGGGGGGGGGG
+    
+
+    chassis.moveToPoint(-53.154, -31.353, 500, {.maxSpeed=80});
+    chassis.turnToHeading(80,900,{.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=90});
+    pros::delay(400);
+    targetpos = startpos;
+    clawtarget = clawstart;
+    chassis.moveToPoint(6, chassis.getPose().y, 1000, {.maxSpeed=100, .earlyExitRange = 5});
+    //chassis.waitUntilDone();
+    chassis.turnToHeading(0, 800, {.direction=AngularDirection::CCW_COUNTERCLOCKWISE,.maxSpeed=80});
+    chassis.waitUntilDone();
+    chassis.moveToPoint(chassis.getPose().x, -75, 1300, {.forwards = false, .minSpeed = 120});
+    chassis.waitUntilDone();
+    chassis.moveToPoint(chassis.getPose().x, -53, 1000);
+    chassis.waitUntilDone();
+    chassis.moveToPoint(chassis.getPose().x, -75, 1000, {.forwards = false, .minSpeed = 120});
+    chassis.waitUntilDone();
+    chassis.moveToPoint(0,-8,3000,{.minSpeed=100});
 }
+
+
+
+
+
+
+
+
 void ethan() {
     chassis.setPose(-62.5, -0.3125, 90);
     setClaw(-127);
@@ -776,9 +1392,11 @@ void ethan() {
     targetpos = startpos + 8000;
     clawtarget = clawstart + 51000;
 }
+
 void autonomous() {
-    ethan();
+    skills88();
 }
+
 
 void opcontrol() {
     liftPID = &liftPIDLight;
@@ -827,25 +1445,66 @@ void opcontrol() {
             setClaw(-127);
         }
 
+        // if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_A)) {
+        //     wasHoldingA = true;
+
+        //     if (!timerStarted) {
+        //         timerStarted = true;
+        //         startTime = pros::millis();
+        //         clawtarget = clawstart + 33000;
+        //     }
+
+        //     if (pros::millis() - startTime >= 500) {
+        //         setClaw(127);
+        //     }
+        // }
+        // else if (wasHoldingA) {
+        //     wasHoldingA = false;
+        //     timerStarted = false;
+        //     clawtarget = clawstart + 51000;
+        //     setClaw(-127);
+        // }
+
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_A)) {
-            wasHoldingA = true;
+    wasHoldingA = true;
 
-            if (!timerStarted) {
-                timerStarted = true;
-                startTime = pros::millis();
-                clawtarget = clawstart + 33000;
-            }
+    if (!timerStarted) {
+        timerStarted = true;
+        startTime = pros::millis();
+        preAtargetpos = targetpos;                 // remember height before A
+        clawtarget = clawstart + 33000;             // rotate claw to scoring position
+        targetpos = std::clamp(targetpos - (increment / 2), startpos, maxpos); // drop half increment
+        shotFired = false;
+        releasing = false;
+    }
 
-            if (pros::millis() - startTime >= 500) {
-                setClaw(127);
-            }
-        }
-        else if (wasHoldingA) {
-            wasHoldingA = false;
-            timerStarted = false;
-            clawtarget = clawstart + 51000;
-            setClaw(-127);
-        }
+    if (pros::millis() - startTime >= 500) {
+        setClaw(127);                               // spin outward, re-asserted every loop
+        shotFired = true;
+    }
+}
+else if (wasHoldingA) {
+    wasHoldingA = false;
+    timerStarted = false;
+    shotFired = false;
+
+    if (!releasing) {
+    releasing = true;
+    releaseStart = pros::millis();
+    targetpos = std::clamp(preAtargetpos + 1000, startpos, maxpos); // go a bit above original height
+    clawtarget = clawstart + 51000;              // rotate claw back up
+    setClaw(-127);                               // hold claw inward while lift rises
+}
+
+    if (releasing && pros::millis() - releaseStart >= 400) {
+        setClaw(127);                                // spin outward again once up
+    }
+
+    if (releasing && pros::millis() - releaseStart >= 700) {
+        setClaw(-127);                                // finally settle back to normal inward
+        releasing = false;
+    }
+}
 
 
         if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)) {
@@ -864,14 +1523,29 @@ void opcontrol() {
         pros::delay(10);
 
         if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_LEFT)) {
-            getstack();
+
+        pros::Task liftTask([]() {
+        while (true) {
+            lift.move(-100);
+            pros::delay(10);
+        }
+        });
+
+        getstack();
+
+        liftTask.remove();  // Stop the task
+        lift.move(0);
+
+
+
+
+
+            // lift.move(-60);
+            // getstack();
+            // lift.move(0);
         }
 
-        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_DOWN)) {
-            getstackfromwall();
-        }
+        
+
     }
-        
-
-        
 }
